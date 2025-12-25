@@ -247,6 +247,11 @@ func (g *agentgatewayParametersHelmValuesGenerator) GetResolvedParametersForGate
 	return g.resolveParameters(gw)
 }
 
+// getDefaultAgentgatewayHelmValues generates the default helm values for an agentgateway-based Gateway.
+// Returns an error if:
+//   - No valid listener ports are found
+//   - Multiple IP addresses are specified in Gateway.spec.addresses
+//   - An invalid IP address format is provided
 func (g *agentgatewayParametersHelmValuesGenerator) getDefaultAgentgatewayHelmValues(gw *gwv1.Gateway) (*deployer.HelmConfig, error) {
 	irGW := deployer.GetGatewayIR(gw, g.inputs.CommonCollections)
 	ports := deployer.GetPortsValues(irGW, nil, true) // true = agentgateway
@@ -261,6 +266,9 @@ func (g *agentgatewayParametersHelmValuesGenerator) getDefaultAgentgatewayHelmVa
 			return &s
 		}(),
 		Ports: ports,
+		Service: &deployer.HelmService{
+			Type: ptr.To(string(corev1.ServiceTypeLoadBalancer)),
+		},
 		Xds: &deployer.HelmXds{
 			Host: &g.inputs.ControlPlane.XdsHost,
 			Port: &g.inputs.ControlPlane.AgwXdsPort,
@@ -274,6 +282,11 @@ func (g *agentgatewayParametersHelmValuesGenerator) getDefaultAgentgatewayHelmVa
 	if i := gw.Spec.Infrastructure; i != nil {
 		gtw.GatewayAnnotations = translateInfraMeta(i.Annotations)
 		gtw.GatewayLabels = translateInfraMeta(i.Labels)
+	}
+
+	// Extract loadBalancerIP from Gateway.spec.addresses and set it on the service if service type is LoadBalancer
+	if err := deployer.SetLoadBalancerIPFromGateway(gw, gtw.Service); err != nil {
+		return nil, err
 	}
 
 	gtw.Image = &agentgateway.Image{

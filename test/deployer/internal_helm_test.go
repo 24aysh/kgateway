@@ -130,6 +130,10 @@ wIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBtestcertdata
 			InputFile: "agentgateway-params-primary",
 		},
 		{
+			Name:      "agentgateway with static IP address",
+			InputFile: "agentgateway-loadbalancer-static-ip",
+		},
+		{
 			Name:      "agentgateway with full image override",
 			InputFile: "agentgateway-image-override",
 		},

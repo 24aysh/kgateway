@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: agentgateway
+spec:
+  controllerName: agentgateway.dev/agentgateway
+  description: Standard class for managing Gateway API ingress traffic with agentgateway.
+---
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: gw
+  namespace: default
+spec:
+  gatewayClassName: agentgateway
+  addresses:
+    - type: IPAddress
+      value: 203.0.113.10
+  listeners:
+    - protocol: HTTP
+      port: 8080
+      name: http
+      allowedRoutes:
+        namespaces:
+          from: Same
+---

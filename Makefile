@@ -677,8 +677,7 @@ GORELEASER_CURRENT_TAG ?= $(VERSION)
 
 .PHONY: release
 release: ## Create a release using goreleaser
-	(cd tools && GORELEASER_CURRENT_TAG=$(GORELEASER_CURRENT_TAG) go run github.com/goreleaser/goreleaser/v2 release $(GORELEASER_ARGS) --timeout $(GORELEASER_TIMEOUT))
-
+	GORELEASER_CURRENT_TAG=$(GORELEASER_CURRENT_TAG) go run -modfile=tools/go.mod github.com/goreleaser/goreleaser/v2 release -f tools/.goreleaser.yaml $(GORELEASER_ARGS) --timeout $(GORELEASER_TIMEOUT)
 .PHONY: release-notes
 release-notes: ## Generate release notes (PREVIOUS_TAG required, CURRENT_TAG optional)
 	./hack/generate-release-notes.sh -p $(PREVIOUS_TAG) -c $(or $(CURRENT_TAG),HEAD)

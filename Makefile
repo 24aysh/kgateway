@@ -670,14 +670,14 @@ lint-kgateway-charts: ## Lint the kgateway and agentgateway charts
 # Release
 #----------------------------------------------------------------------------------
 
-GORELEASER ?= go tool github.com/goreleaser/goreleaser/v2
+GORELEASER ?= cd tools && go run github.com/goreleaser/goreleaser/v2
 GORELEASER_ARGS ?= --snapshot --clean
 GORELEASER_TIMEOUT ?= 60m
 GORELEASER_CURRENT_TAG ?= $(VERSION)
 
 .PHONY: release
 release: ## Create a release using goreleaser
-	GORELEASER_CURRENT_TAG=$(GORELEASER_CURRENT_TAG) $(GORELEASER) release $(GORELEASER_ARGS) --timeout $(GORELEASER_TIMEOUT)
+	(cd tools && GORELEASER_CURRENT_TAG=$(GORELEASER_CURRENT_TAG) go run github.com/goreleaser/goreleaser/v2 release $(GORELEASER_ARGS) --timeout $(GORELEASER_TIMEOUT))
 
 .PHONY: release-notes
 release-notes: ## Generate release notes (PREVIOUS_TAG required, CURRENT_TAG optional)

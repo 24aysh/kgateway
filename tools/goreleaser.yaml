@@ -5,7 +5,7 @@ before:
     - go mod download
 builds:
   - id: controller
-    main: ./cmd/kgateway
+    main: ../cmd/kgateway
     binary: kgateway-linux-{{ .Arch }}
     gcflags: "{{ .Env.GCFLAGS }}"
     ldflags: "{{ .Env.LDFLAGS }}"
@@ -21,7 +21,7 @@ builds:
       - amd64
       - arm64
   - id: sds
-    main: ./cmd/sds
+    main: ../cmd/sds
     binary: sds-linux-{{ .Arch }}
     gcflags: "{{ .Env.GCFLAGS }}"
     ldflags: "{{ .Env.LDFLAGS }}"
@@ -36,7 +36,7 @@ builds:
       - amd64
       - arm64
   - id: envoyinit
-    main: ./cmd/envoyinit
+    main: ../cmd/envoyinit
     binary: envoyinit-linux-{{ .Arch }}
     gcflags: "{{ .Env.GCFLAGS }}"
     ldflags: "{{ .Env.LDFLAGS }}"
@@ -54,7 +54,7 @@ dockers:
   - image_templates:
       - &controller_arm_image "{{ .Env.IMAGE_REGISTRY }}/{{ .Env.CONTROLLER_IMAGE_REPO }}:{{ .Env.VERSION }}-arm64"
     use: buildx
-    dockerfile: &controller_dockerfile cmd/kgateway/Dockerfile
+    dockerfile: &controller_dockerfile ../cmd/kgateway/Dockerfile
     goos: linux
     goarch: arm64
     build_flag_templates:
@@ -96,7 +96,7 @@ dockers:
   - image_templates:
       - &sds_arm_image "{{ .Env.IMAGE_REGISTRY }}/{{ .Env.SDS_IMAGE_REPO }}:{{ .Env.VERSION }}-arm64"
     use: buildx
-    dockerfile: &sds_dockerfile cmd/sds/Dockerfile
+    dockerfile: &sds_dockerfile ../cmd/sds/Dockerfile
     goos: linux
     goarch: arm64
     build_flag_templates:
@@ -118,7 +118,7 @@ dockers:
   - image_templates:
       - &envoyinit_arm_image "{{ .Env.IMAGE_REGISTRY }}/{{ .Env.ENVOYINIT_IMAGE_REPO }}:{{ .Env.VERSION }}-arm64"
     use: buildx
-    dockerfile: &envoyinit_dockerfile cmd/envoyinit/Dockerfile
+    dockerfile: &envoyinit_dockerfile ../cmd/envoyinit/Dockerfile
     goos: linux
     goarch: arm64
     build_flag_templates:
@@ -132,8 +132,8 @@ dockers:
       - "--cache-from=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:arm64"
       - "--cache-to=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:arm64,mode=max,ignore-error=true"
     extra_files:
-      - cmd/envoyinit/docker-entrypoint.sh
-      - internal/envoyinit
+      - ../cmd/envoyinit/docker-entrypoint.sh
+      - ../internal/envoyinit
   - image_templates:
       - &envoyinit_amd_image "{{ .Env.IMAGE_REGISTRY }}/{{ .Env.ENVOYINIT_IMAGE_REPO }}:{{ .Env.VERSION }}-amd64"
     use: buildx
@@ -150,8 +150,8 @@ dockers:
       - "--cache-from=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:amd64"
       - "--cache-to=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:amd64,mode=max,ignore-error=true"
     extra_files:
-      - cmd/envoyinit/docker-entrypoint.sh
-      - internal/envoyinit
+      - ../cmd/envoyinit/docker-entrypoint.sh
+      - ../internal/envoyinit
 docker_manifests:
   - name_template: "{{ .Env.IMAGE_REGISTRY }}/{{ .Env.CONTROLLER_IMAGE_REPO }}:{{ .Env.VERSION }}"
     image_templates:

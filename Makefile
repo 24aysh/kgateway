@@ -672,7 +672,6 @@ lint-kgateway-charts: ## Lint the kgateway and agentgateway charts
 # Release
 #----------------------------------------------------------------------------------
 
-GORELEASER ?= cd tools && go run github.com/goreleaser/goreleaser/v2
 GORELEASER_ARGS ?= --snapshot --clean
 GORELEASER_TIMEOUT ?= 60m
 GORELEASER_CURRENT_TAG ?= $(VERSION)

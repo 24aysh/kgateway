@@ -2,7 +2,7 @@ module github.com/kgateway-dev/kgateway/v2/tools
 
 go 1.25.5
 
-require github.com/goreleaser/goreleaser/v2 v2.13.2
+tool github.com/goreleaser/goreleaser/v2
 
 require (
 	al.essio.dev/pkg/shellescape v1.6.0 // indirect
@@ -177,6 +177,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/goreleaser/chglog v0.7.4 // indirect
 	github.com/goreleaser/fileglob v1.4.0 // indirect
+	github.com/goreleaser/goreleaser/v2 v2.13.2 // indirect
 	github.com/goreleaser/nfpm/v2 v2.44.1 // indirect
 	github.com/goreleaser/quill v0.0.0-20251224035235-ab943733386f // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect

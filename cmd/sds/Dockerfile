@@ -2,11 +2,11 @@ ARG BASE_IMAGE
 
 FROM $BASE_IMAGE
 
-ARG GOARCH=amd64
+ARG TARGETPLATFORM
 
 RUN apk -U upgrade
 
-COPY sds-linux-$GOARCH /usr/local/bin/sds
+COPY $TARGETPLATFORM/sds-linux-* /usr/local/bin/sds
 
 USER 10101
 

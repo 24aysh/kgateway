@@ -4,8 +4,8 @@ FROM $BASE_IMAGE
 
 RUN apk -U upgrade
 
-ARG GOARCH
-COPY *dummy-idp-linux-$GOARCH /usr/local/bin/dummy-idp
+ARG TARGETARCH
+COPY *dummy-idp-linux-$TARGETARCH /usr/local/bin/dummy-idp
 
 USER 10101
 

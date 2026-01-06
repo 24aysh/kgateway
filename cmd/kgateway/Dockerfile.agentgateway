@@ -1,7 +1,7 @@
 FROM cgr.dev/chainguard/static
 
-ARG GOARCH
-COPY *kgateway-linux-$GOARCH /usr/local/bin/kgateway
+ARG TARGETARCH
+COPY *kgateway-linux-$TARGETARCH /usr/local/bin/kgateway
 
 USER 10101
 

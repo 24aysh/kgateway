@@ -4,8 +4,8 @@ FROM $BASE_IMAGE
 
 RUN apk -U upgrade
 
-ARG GOARCH
-COPY *sds-linux-$GOARCH /usr/local/bin/sds
+ARG TARGETARCH
+COPY *sds-linux-$TARGETARCH /usr/local/bin/sds
 
 USER 10101
 

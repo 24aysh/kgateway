@@ -62,11 +62,13 @@ dockers_v2:
     dockerfile: cmd/kgateway/Dockerfile
     build_args:
       ENVOY_IMAGE: "{{ .Env.ENVOY_IMAGE }}"
+    flags:
+      - "--pull"
     platforms:
       - linux/amd64
       - linux/arm64
 
-  # 2. Agent Gateway Controller Image
+  # 2. agentgateway Controller Image
   - id: agentgateway
     ids:
       - controller
@@ -75,6 +77,8 @@ dockers_v2:
     tags:
       - "{{ .Env.VERSION }}"
     dockerfile: cmd/kgateway/Dockerfile.agentgateway
+    flags:
+      - "--pull"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -90,6 +94,8 @@ dockers_v2:
     dockerfile: cmd/sds/Dockerfile
     build_args:
       BASE_IMAGE: "{{ .Env.ALPINE_BASE_IMAGE }}"
+    flags:
+      - "--pull"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -108,6 +114,7 @@ dockers_v2:
       ENTRYPOINT_SCRIPT: "/cmd/envoyinit/docker-entrypoint.sh"
       RUSTFORMATIONS_DIR: "/internal/envoyinit"
     flags:
+      - "--pull"
       - "--cache-from=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:latest"
       - "--cache-to=type=registry,ref={{ .Env.IMAGE_REGISTRY }}/envoy-wrapper-cache:latest,mode=max,ignore-error=true"
     extra_files:

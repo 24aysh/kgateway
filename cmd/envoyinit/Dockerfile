@@ -21,7 +21,6 @@ COPY ${RUSTFORMATIONS_DIR}/${PATCHED_SDK_DIR} ${PATCHED_SDK_DIR}
 # Derive RUST_BUILD_ARCH from TARGETPLATFORM
 # TARGETPLATFORM is like "linux/amd64" or "linux/arm64"
 ARG TARGETPLATFORM
-ARG RUST_BUILD_ARCH
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
     echo "aarch64" > /tmp/rust_arch; \
     else \
@@ -44,17 +43,12 @@ RUN apt update && apt install -y clang
 # Copy cached target and cargo dirs from rust_build_deps from step 1
 COPY --from=rust_build_deps /usr/local/cargo /usr/local/cargo
 COPY --from=rust_build_deps /build/target /build/target
+COPY --from=rust_build_deps /tmp/rust_arch /tmp/rust_arch
 
 # Copy the source code and build the module.
 ARG RUSTFORMATIONS_DIR=./rustformations
 COPY ${RUSTFORMATIONS_DIR} .
-# Derive RUST_BUILD_ARCH from TARGETPLATFORM
-ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-    RUST_ARCH="aarch64"; \
-    else \
-    RUST_ARCH="x86_64"; \
-    fi && \
+RUN RUST_ARCH=$(cat /tmp/rust_arch) && \
     cargo zigbuild --target ${RUST_ARCH}-unknown-linux-gnu && \
     cp /build/target/${RUST_ARCH}-unknown-linux-gnu/debug/librust_module.so /build/librust_module.so
 

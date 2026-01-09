@@ -144,8 +144,6 @@ jobs:
   goreleaser:
     name: goreleaser
     needs: [setup, helm, release-notes]
-    # Allow goreleaser to run even if release-notes fails (useful for fork testing)
-    if: ${{ always() && needs.setup.result == 'success' && needs.helm.result == 'success' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -171,7 +169,7 @@ jobs:
       - uses: "docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f" # v3.12.0
 
       - name: Download release notes
-        if: ${{ needs.setup.outputs.needs_release == 'true' && needs.release-notes.result == 'success' }}
+        if: ${{ needs.setup.outputs.needs_release == 'true' }}
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-notes

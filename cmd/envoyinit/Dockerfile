@@ -63,8 +63,8 @@ RUN apt-get update \
     && apt-get install wget ca-certificates -y \
     && rm -rf  /var/log/*log /var/lib/apt/lists/* /var/log/apt/* /var/lib/dpkg/*-old /var/cache/debconf/*-old
 
-ARG TARGETARCH
-COPY *envoyinit-linux-$TARGETARCH /usr/local/bin/envoyinit
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/envoyinit-linux-* /usr/local/bin/envoyinit
 
 ENV ENVOY_DYNAMIC_MODULES_SEARCH_PATH=/usr/local/lib
 COPY --from=rust_builder /build/librust_module.so /usr/local/lib/librust_module.so

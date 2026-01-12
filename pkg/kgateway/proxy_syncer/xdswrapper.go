@@ -45,6 +45,14 @@ func (p XdsSnapWrapper) Equals(in XdsSnapWrapper) bool {
 			return false
 		}
 	}
+	for i, r := range p.erroredClusters {
+		if r != in.erroredClusters[i] {
+			return false
+		}
+	}
+	if p.proxyKey != in.proxyKey {
+		return false
+	}
 	return true
 }
 

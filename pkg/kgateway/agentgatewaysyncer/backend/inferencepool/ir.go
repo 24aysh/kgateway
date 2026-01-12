@@ -26,10 +26,12 @@ type inferencePool struct {
 	targetPorts []targetPort
 	// configRef is a reference to the extension configuration. A configRef is typically implemented
 	// as a Kubernetes Service resource.
+	// +noKrtEquals
 	configRef *service
 	// mu is a mutex to protect access to the errors list.
 	mu sync.Mutex
 	// errors is a list of errors that occurred while processing the InferencePool.
+	// +noKrtEquals
 	errors []error
 	// endpoints define the list of endpoints resolved by the podSelector.
 	endpoints []endpoint
@@ -174,6 +176,14 @@ func (ir *inferencePool) Equals(other any) bool {
 	if !ir.failOpenEqual(otherPool) {
 		return false
 	}
+
+	if !maps.Equal(ir.podSelector, otherPool.podSelector) {
+		return false
+	}
+
+	if ir.failOpen != otherPool.failOpen {
+		return false
+	}
 	return true
 }
 
@@ -249,6 +259,14 @@ func (s service) ResourceName() string {
 }
 
 func (s service) Equals(in service) bool {
+	if len(s.ports) != len(in.ports) {
+		return false
+	}
+	for i := range s.ports {
+		if s.ports[i] != in.ports[i] {
+			return false
+		}
+	}
 	return s.ObjectSource.Equals(in.ObjectSource) && versionEquals(s.obj, in.obj)
 }
 

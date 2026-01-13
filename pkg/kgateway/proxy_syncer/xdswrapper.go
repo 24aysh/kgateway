@@ -27,8 +27,10 @@ type XdsSnapWrapper struct {
 	snap *envoycache.Snapshot
 	// erroredClusters contains clusters that encountered errors during backend translation
 	// TODO: this is not used anywhere, we need surface this somewhere
+	// +noKrtEquals
 	erroredClusters []string
-	proxyKey        string
+	// +noKrtEquals
+	proxyKey string
 }
 
 func (p XdsSnapWrapper) WithSnapshot(snap *envoycache.Snapshot) XdsSnapWrapper {
@@ -44,14 +46,6 @@ func (p XdsSnapWrapper) Equals(in XdsSnapWrapper) bool {
 		if r.Version != in.snap.Resources[i].Version {
 			return false
 		}
-	}
-	for i, r := range p.erroredClusters {
-		if r != in.erroredClusters[i] {
-			return false
-		}
-	}
-	if p.proxyKey != in.proxyKey {
-		return false
 	}
 	return true
 }

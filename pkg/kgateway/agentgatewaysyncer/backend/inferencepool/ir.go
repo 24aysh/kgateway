@@ -243,6 +243,7 @@ type service struct {
 	obj metav1.Object
 
 	// ports is a list of ports exposed by the service.
+	// +noKrtEquals
 	ports []servicePort
 }
 
@@ -259,14 +260,6 @@ func (s service) ResourceName() string {
 }
 
 func (s service) Equals(in service) bool {
-	if len(s.ports) != len(in.ports) {
-		return false
-	}
-	for i := range s.ports {
-		if s.ports[i] != in.ports[i] {
-			return false
-		}
-	}
 	return s.ObjectSource.Equals(in.ObjectSource) && versionEquals(s.obj, in.obj)
 }
 

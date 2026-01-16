@@ -444,31 +444,29 @@ CONTROLLER_OUTPUT_DIR=$(OUTPUT_DIR)/pkg/kgateway
 export CONTROLLER_IMAGE_REPO ?= kgateway
 export AGENTGATEWAY_IMAGE_REPO ?= agentgateway-controller
 
+# GoReleaser-compatible TARGETPLATFORM path (e.g., linux/amd64)
+TARGETPLATFORM_DIR = linux/$(GOARCH)
+
 # We include the files in K8S_GATEWAY_SOURCES as dependencies to the kgateway build
 # so changes in those directories cause the make target to rebuild
-$(CONTROLLER_OUTPUT_DIR)/kgateway-linux-$(GOARCH): $(K8S_GATEWAY_SOURCES)
+# Binary is placed in TARGETPLATFORM path to match GoReleaser layout
+$(CONTROLLER_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/kgateway-linux-$(GOARCH): $(K8S_GATEWAY_SOURCES)
+	@mkdir -p $(CONTROLLER_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)
 	$(GO_BUILD_FLAGS) GOOS=linux go build -ldflags='$(LDFLAGS)' -gcflags='$(GCFLAGS)' -o $@ ./cmd/kgateway/...
 
 # TODO: is this target obsolete?
 .PHONY: kgateway
-kgateway: $(CONTROLLER_OUTPUT_DIR)/kgateway-linux-$(GOARCH)
+kgateway: $(CONTROLLER_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/kgateway-linux-$(GOARCH)
 
-$(CONTROLLER_OUTPUT_DIR)/Dockerfile: cmd/kgateway/Dockerfile
-	cp $< $@
-
-$(CONTROLLER_OUTPUT_DIR)/Dockerfile.agentgateway: cmd/kgateway/Dockerfile.agentgateway
-	cp $< $@
-
-$(CONTROLLER_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(CONTROLLER_OUTPUT_DIR)/kgateway-linux-$(GOARCH) $(CONTROLLER_OUTPUT_DIR)/Dockerfile
-	$(BUILDX_BUILD) --load $(PLATFORM) $(CONTROLLER_OUTPUT_DIR) -f $(CONTROLLER_OUTPUT_DIR)/Dockerfile \
-		--build-arg GOARCH=$(GOARCH) \
+# Docker build uses repository root as context to match GoReleaser
+$(CONTROLLER_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(CONTROLLER_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/kgateway-linux-$(GOARCH)
+	$(BUILDX_BUILD) --load $(PLATFORM) $(CONTROLLER_OUTPUT_DIR) -f cmd/kgateway/Dockerfile \
 		--build-arg ENVOY_IMAGE=$(ENVOY_IMAGE) \
 		-t $(IMAGE_REGISTRY)/$(CONTROLLER_IMAGE_REPO):$(VERSION)
 	@touch $@
 
-$(CONTROLLER_OUTPUT_DIR)/.docker-stamp-agentgateway-$(VERSION)-$(GOARCH): $(CONTROLLER_OUTPUT_DIR)/kgateway-linux-$(GOARCH) $(CONTROLLER_OUTPUT_DIR)/Dockerfile.agentgateway
-	$(BUILDX_BUILD) --load $(PLATFORM) $(CONTROLLER_OUTPUT_DIR) -f $(CONTROLLER_OUTPUT_DIR)/Dockerfile.agentgateway \
-		--build-arg GOARCH=$(GOARCH) \
+$(CONTROLLER_OUTPUT_DIR)/.docker-stamp-agentgateway-$(VERSION)-$(GOARCH): $(CONTROLLER_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/kgateway-linux-$(GOARCH)
+	$(BUILDX_BUILD) --load $(PLATFORM) $(CONTROLLER_OUTPUT_DIR) -f cmd/kgateway/Dockerfile.agentgateway \
 		-t $(IMAGE_REGISTRY)/$(AGENTGATEWAY_IMAGE_REPO):$(VERSION)
 	@touch $@
 
@@ -487,18 +485,17 @@ SDS_SOURCES=$(call get_sources,$(SDS_DIR))
 SDS_OUTPUT_DIR=$(OUTPUT_DIR)/$(SDS_DIR)
 export SDS_IMAGE_REPO ?= sds
 
-$(SDS_OUTPUT_DIR)/sds-linux-$(GOARCH): $(SDS_SOURCES)
+# Binary is placed in TARGETPLATFORM path to match GoReleaser layout
+$(SDS_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/sds-linux-$(GOARCH): $(SDS_SOURCES)
+	@mkdir -p $(SDS_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)
 	$(GO_BUILD_FLAGS) GOOS=linux go build -ldflags='$(LDFLAGS)' -gcflags='$(GCFLAGS)' -o $@ ./cmd/sds/...
 
 .PHONY: sds
-sds: $(SDS_OUTPUT_DIR)/sds-linux-$(GOARCH)
+sds: $(SDS_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/sds-linux-$(GOARCH)
 
-$(SDS_OUTPUT_DIR)/Dockerfile.sds: cmd/sds/Dockerfile
-	cp $< $@
-
-$(SDS_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(SDS_OUTPUT_DIR)/sds-linux-$(GOARCH) $(SDS_OUTPUT_DIR)/Dockerfile.sds
-	$(BUILDX_BUILD) --load $(PLATFORM) $(SDS_OUTPUT_DIR) -f $(SDS_OUTPUT_DIR)/Dockerfile.sds \
-		--build-arg GOARCH=$(GOARCH) \
+# Docker build uses repository root as context to match GoReleaser
+$(SDS_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(SDS_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/sds-linux-$(GOARCH)
+	$(BUILDX_BUILD) --load $(PLATFORM) $(SDS_OUTPUT_DIR) -f cmd/sds/Dockerfile \
 		--build-arg BASE_IMAGE=$(ALPINE_BASE_IMAGE) \
 		-t $(IMAGE_REGISTRY)/$(SDS_IMAGE_REPO):$(VERSION)
 	@touch $@
@@ -529,30 +526,28 @@ RUSTFORMATIONS_DIR := internal/envoyinit/
 # find all the files under the rustformation directory but exclude the target and pkg directory
 RUSTFORMATIONS_SRC_FILES := $(shell find $(RUSTFORMATIONS_DIR) \( -type d -name target -o -type d -name pkg \) -prune -o -type f -print)
 
-$(ENVOYINIT_OUTPUT_DIR)/envoyinit-linux-$(GOARCH): $(ENVOYINIT_SOURCES)
+# Binary is placed in TARGETPLATFORM path to match GoReleaser layout
+$(ENVOYINIT_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/envoyinit-linux-$(GOARCH): $(ENVOYINIT_SOURCES)
+	@mkdir -p $(ENVOYINIT_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)
 	$(GO_BUILD_FLAGS) GOOS=linux go build -ldflags='$(LDFLAGS)' -gcflags='$(GCFLAGS)' -o $@ ./cmd/envoyinit/...
 
 .PHONY: envoyinit
-envoyinit: $(ENVOYINIT_OUTPUT_DIR)/envoyinit-linux-$(GOARCH)
+envoyinit: $(ENVOYINIT_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/envoyinit-linux-$(GOARCH)
 
-# Allow override of Dockerfile for local development
-ENVOYINIT_DOCKERFILE ?= cmd/envoyinit/Dockerfile
-$(ENVOYINIT_OUTPUT_DIR)/Dockerfile.envoyinit: $(ENVOYINIT_DOCKERFILE) $(RUSTFORMATIONS_SRC_FILES)
-	@if [ "$(ENVOYINIT_DOCKERFILE)" = "cmd/envoyinit/Dockerfile" ]; then \
-		echo "syncing rustformations..."; \
-		rsync -av --delete --exclude 'target/' --exclude 'pkg/' ${RUSTFORMATIONS_DIR} $(ENVOYINIT_OUTPUT_DIR)/rustformations; \
-	fi
-	cp $< $@
+# Sync rustformations and docker-entrypoint.sh to output dir to match GoReleaser context
+$(ENVOYINIT_OUTPUT_DIR)/rustformations: $(RUSTFORMATIONS_SRC_FILES)
+	@echo "syncing rustformations..."
+	@rsync -av --delete --exclude 'target/' --exclude 'pkg/' ${RUSTFORMATIONS_DIR} $(ENVOYINIT_OUTPUT_DIR)/rustformations
 
 $(ENVOYINIT_OUTPUT_DIR)/docker-entrypoint.sh: cmd/envoyinit/docker-entrypoint.sh
 	cp $< $@
 
-$(ENVOYINIT_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(ENVOYINIT_OUTPUT_DIR)/envoyinit-linux-$(GOARCH) $(ENVOYINIT_OUTPUT_DIR)/Dockerfile.envoyinit $(ENVOYINIT_OUTPUT_DIR)/docker-entrypoint.sh
-	$(BUILDX_BUILD) --load $(PLATFORM) $(ENVOYINIT_OUTPUT_DIR) -f $(ENVOYINIT_OUTPUT_DIR)/Dockerfile.envoyinit \
-		--build-arg GOARCH=$(GOARCH) \
+# Docker build uses output dir as context with synced files to match GoReleaser layout
+$(ENVOYINIT_OUTPUT_DIR)/.docker-stamp-$(VERSION)-$(GOARCH): $(ENVOYINIT_OUTPUT_DIR)/$(TARGETPLATFORM_DIR)/envoyinit-linux-$(GOARCH) $(ENVOYINIT_OUTPUT_DIR)/rustformations $(ENVOYINIT_OUTPUT_DIR)/docker-entrypoint.sh
+	$(BUILDX_BUILD) --load $(PLATFORM) $(ENVOYINIT_OUTPUT_DIR) -f cmd/envoyinit/Dockerfile \
 		--build-arg ENVOY_IMAGE=$(ENVOY_IMAGE) \
-		--build-arg RUST_BUILD_ARCH=$(RUST_BUILD_ARCH) \
 		--build-arg RUSTFORMATIONS_DIR=./rustformations \
+		--build-arg ENTRYPOINT_SCRIPT=./docker-entrypoint.sh \
 		$(ENVOYINIT_CACHE_FROM) \
 		-t $(IMAGE_REGISTRY)/$(ENVOYINIT_IMAGE_REPO):$(VERSION)
 	@touch $@

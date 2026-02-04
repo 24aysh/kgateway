@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use envoy_proxy_dynamic_modules_rust_sdk::*;
+use minijinja::Environment;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use transformations::{
@@ -12,18 +12,23 @@ use transformations::{
 use mockall::*;
 
 static EMPTY_MAP: Lazy<HashMap<String, String>> = Lazy::new(HashMap::new);
-#[derive(Deserialize, Clone)]
+#[derive(Clone)]
 pub struct FilterConfig {
     transformations: LocalTransformationConfig,
+    env: Environment<'static>,
 }
 
 struct EnvoyTransformationOps<'a> {
     envoy_filter: &'a mut dyn EnvoyHttpFilter,
+    used_received_response_body: Option<bool>,
 }
 
 impl<'a> EnvoyTransformationOps<'a> {
     fn new(envoy_filter: &'a mut dyn EnvoyHttpFilter) -> EnvoyTransformationOps<'a> {
-        EnvoyTransformationOps { envoy_filter }
+        EnvoyTransformationOps {
+            envoy_filter,
+            used_received_response_body: None,
+        }
     }
 }
 impl TransformationOps for EnvoyTransformationOps<'_> {
@@ -36,6 +41,7 @@ impl TransformationOps for EnvoyTransformationOps<'_> {
 
     #[cfg(not(target_arch = "x86_64"))]
     fn add_request_header(&mut self, _key: &str, _value: &[u8]) -> bool {
+        envoy_log_warn!("add header is currently not supported for non-x86 build. set header can be used if existing header can be overwritten.");
         true
     }
 
@@ -59,13 +65,13 @@ impl TransformationOps for EnvoyTransformationOps<'_> {
         serde_json::from_slice(&body).context("failed to parse request body as json")
     }
     fn get_request_body(&mut self) -> Vec<u8> {
-        if let Some(buffers) = self.envoy_filter.get_buffered_request_body() {
-            // TODO: implement Reader for EnvoyBuffer and use serde_json::from_reader to avoid making copy first?
-            let chunks: Vec<_> = buffers.iter().map(|b| b.as_slice()).collect();
-            chunks.concat();
-        }
+        let Some(buffers) = self.envoy_filter.get_buffered_request_body() else {
+            return Vec::default();
+        };
 
-        Vec::default()
+        // TODO: implement Reader for EnvoyBuffer and use serde_json::from_reader to avoid making copy first?
+        let chunks: Vec<_> = buffers.iter().map(|b| b.as_slice()).collect();
+        chunks.concat()
     }
     fn drain_request_body(&mut self, number_of_bytes: usize) -> bool {
         self.envoy_filter
@@ -83,6 +89,7 @@ impl TransformationOps for EnvoyTransformationOps<'_> {
     }
     #[cfg(not(target_arch = "x86_64"))]
     fn add_response_header(&mut self, _key: &str, _value: &[u8]) -> bool {
+        envoy_log_warn!("add header is currently not supported for non-x86 build. set header can be used if existing header can be overwritten.");
         true
     }
     fn set_response_header(&mut self, key: &str, value: &[u8]) -> bool {
@@ -92,29 +99,72 @@ impl TransformationOps for EnvoyTransformationOps<'_> {
         self.envoy_filter.remove_response_header(key)
     }
     fn parse_response_json_body(&mut self) -> Result<JsonValue> {
-        let Some(buffers) = self.envoy_filter.get_buffered_response_body() else {
+        let body = self.get_response_body();
+        if body.is_empty() {
             return Ok(JsonValue::Null);
-        };
-        // TODO: implement Reader for EnvoyBuffer and use serde_json::from_reader to avoid making copy first?
-        let chunks: Vec<_> = buffers.iter().map(|b| b.as_slice()).collect();
-        let body = chunks.concat();
+        }
         serde_json::from_slice(&body).context("failed to parse response body as json")
     }
     fn get_response_body(&mut self) -> Vec<u8> {
-        let Some(buffers) = self.envoy_filter.get_buffered_response_body() else {
-            return Vec::default();
-        };
+        self.used_received_response_body = Some(false);
 
-        // TODO: implement Reader for EnvoyBuffer and use serde_json::from_reader to avoid making copy first?
-        let chunks: Vec<_> = buffers.iter().map(|b| b.as_slice()).collect();
-        chunks.concat()
+        let mut buffers = self.envoy_filter.get_buffered_response_body();
+
+        if buffers.is_none() {
+            // For LocalReply, the body is in the "received_response_body"
+            buffers = self.envoy_filter.get_received_response_body();
+            if buffers.is_some() {
+                self.used_received_response_body = Some(true);
+            }
+        }
+
+        match buffers {
+            None => Vec::default(),
+            Some(buffers) => {
+                // TODO: implement Reader for EnvoyBuffer and use serde_json::from_reader to avoid making copy first?
+                let chunks: Vec<_> = buffers.iter().map(|b| b.as_slice()).collect();
+                chunks.concat()
+            }
+        }
     }
     fn drain_response_body(&mut self, number_of_bytes: usize) -> bool {
-        self.envoy_filter
-            .drain_buffered_response_body(number_of_bytes)
+        // With testing, it seems to be unnecessary to detect
+        // if we should drain the "received_response_body" if the body is from there.
+        // As long as something get pushed to the "buffered_response_body", that
+        // seems to get used first before the received_response_body.
+
+        // ie in the case of LocalReply, the body comes from "received_response_body"
+        // but we can push the new body in "buffered_response_body" without draining
+        // the "received_response_body", the new body is sent to end user.
+
+        // However, not sure if there is any side effect for that, so doing it here
+        // just in case.
+        if self.used_received_response_body.is_none() {
+            // the used_received_response_body boolean only get set if
+            // the body() inja function is used in the transformation
+            // so, detect it here again if not set.
+            self.used_received_response_body = Some(false);
+            if self.envoy_filter.get_buffered_response_body().is_none()
+                && self.envoy_filter.get_received_response_body().is_some()
+            {
+                self.used_received_response_body = Some(true);
+            }
+        }
+
+        if self.used_received_response_body.unwrap_or(false) {
+            self.envoy_filter
+                .drain_received_response_body(number_of_bytes)
+        } else {
+            self.envoy_filter
+                .drain_buffered_response_body(number_of_bytes)
+        }
     }
     fn append_response_body(&mut self, data: &[u8]) -> bool {
-        self.envoy_filter.append_buffered_response_body(data)
+        if self.used_received_response_body.unwrap_or(false) {
+            self.envoy_filter.append_received_response_body(data)
+        } else {
+            self.envoy_filter.append_buffered_response_body(data)
+        }
     }
 }
 
@@ -132,8 +182,18 @@ impl FilterConfig {
                 return None;
             }
         };
+
+        let env = match transformations::jinja::create_env_with_templates(&config) {
+            Ok(env) => env,
+            Err(err) => {
+                envoy_log_error!("error compiling templates: {err}");
+                return None;
+            }
+        };
+
         Some(FilterConfig {
             transformations: config,
+            env,
         })
     }
 }
@@ -159,6 +219,13 @@ pub struct Filter {
 }
 
 impl Filter {
+    fn get_env(&self) -> &Environment<'static> {
+        match self.get_per_route_config() {
+            Some(config) => &config.env,
+            None => &self.filter_config.env,
+        }
+    }
+
     fn set_per_route_config<EHF: EnvoyHttpFilter>(&mut self, envoy_filter: &mut EHF) {
         if self.per_route_config.is_none() {
             if let Some(per_route_config) = envoy_filter.get_most_specific_route_config().as_ref() {
@@ -250,6 +317,7 @@ impl Filter {
     fn transform_request<EHF: EnvoyHttpFilter>(&self, envoy_filter: &mut EHF) -> bool {
         if let Some(transform) = self.get_request_transform() {
             match transformations::jinja::transform_request(
+                self.get_env(),
                 transform,
                 self.get_request_headers_map(),
                 EnvoyTransformationOps::new(envoy_filter),
@@ -283,6 +351,7 @@ impl Filter {
             let response_headers_map = self.create_headers_map(envoy_filter.get_response_headers());
 
             match transformations::jinja::transform_response(
+                self.get_env(),
                 transform,
                 self.get_request_headers_map(),
                 &response_headers_map,
@@ -446,7 +515,7 @@ mod tests {
         {
           "request": {
             "set": [
-              { "name": "X-substring", "value": "{{substring(\"ENVOYPROXY something\", 5, 10) }}" },
+              { "name": "X-substring", "value": "{{substring(\"ENVOYPROXY something\", 5, 5) }}" },
               { "name": "X-substring-no-3rd", "value": "{{substring(\"ENVOYPROXY something\", 5) }}" },
               { "name": "X-donor-header-contents", "value": "{{ header(\"x-donor\") }}" },
               { "name": "X-donor-header-substringed", "value": "{{ substring( header(\"x-donor\"), 0, 7)}}" }

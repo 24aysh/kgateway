@@ -59,6 +59,7 @@ var (
 	transformForMatchQueryManifest       = filepath.Join(fsutils.MustGetThisDir(), "testdata", "transform-for-match-query.yaml")
 	transformForMatchMethodManifest      = filepath.Join(fsutils.MustGetThisDir(), "testdata", "transform-for-match-method.yaml")
 	transformForHeaderToBodyJsonManifest = filepath.Join(fsutils.MustGetThisDir(), "testdata", "transform-for-header-to-body-json.yaml")
+	transformForBodyLocalReplyManifest   = filepath.Join(fsutils.MustGetThisDir(), "testdata", "transform-for-body-local-reply.yaml")
 
 	proxyObjectMeta = metav1.ObjectMeta{
 		Name:      "gw",
@@ -81,6 +82,7 @@ var (
 			transformForMatchPathManifest,
 			transformForMatchQueryManifest,
 			transformForHeaderToBodyJsonManifest,
+			transformForBodyLocalReplyManifest,
 		},
 	}
 
@@ -178,6 +180,7 @@ func selectCommonTestCases(indices ...int) []transformationTestCase {
 			opts: []curl.Option{
 				curl.WithBody("hello"),
 				curl.WithHeader("cookie", "foo=bar"),
+				curl.WithHeader("User-Agent", "curl/8.18.0"),
 			},
 			resp: &testmatchers.HttpResponse{
 				StatusCode: http.StatusOK,
@@ -193,7 +196,9 @@ func selectCommonTestCases(indices ...int) []transformationTestCase {
 					// "x-space-test": " foobar ",
 					// The http-bin response has "*" and we added "foo.com" in the policy. The library combined
 					// them with a ','
-					"access-control-allow-origin": "*,foo.com",
+
+					// REMOVE-ENVOY-1.37: Add header is no-op for arm build, so comment this out for now until after we upgrade to ENVOY-1.37
+					// "access-control-allow-origin": "*,foo.com",
 				},
 				NotHeaders: []string{
 					"response-gateway",
@@ -206,7 +211,10 @@ func selectCommonTestCases(indices ...int) []transformationTestCase {
 					// There should be a space at the beginning and end but
 					// there might be a side effect from the echo server where the header values are trimmed
 					"x-space-test": "foobar",
-					"cookie":       []string{"foo=bar", "test=123"},
+					"x-client":     "text",
+
+					// REMOVE-ENVOY-1.37: Add header is no-op for arm build, so comment this out for now until after we upgrade to ENVOY-1.37
+					// "cookie":       []string{"foo=bar", "test=123"},
 				},
 				NotHeaders: []string{
 					// looks like the way we set up transformation targeting gateway, we are
@@ -232,7 +240,8 @@ func selectCommonTestCases(indices ...int) []transformationTestCase {
 				// go-httpbin doesn't allow setting custom response header, so make sure
 				// we get one of the default access-control header and removed the other
 				Headers: map[string]any{
-					"access-control-allow-origin": "*,foo.com",
+					// REMOVE-ENVOY-1.37: Add header is no-op for arm build, so comment this out for now until after we upgrade to ENVOY-1.37
+					// "access-control-allow-origin": "*,foo.com",
 				},
 				NotHeaders: []string{
 					"access-control-allow-credentials",
@@ -655,6 +664,39 @@ func selectCommonTestCases(indices ...int) []transformationTestCase {
 				Method: "POST",
 			},
 		},
+		{
+			// test 17
+			name:      "body transform for local reply",
+			routeName: "route-for-body-local-reply",
+			opts: []curl.Option{
+				curl.WithBody(strings.Repeat("x", 1500)),
+			},
+			resp: &testmatchers.HttpResponse{
+				StatusCode: http.StatusRequestEntityTooLarge,
+				Headers: map[string]any{
+					"content-length": "17",
+				},
+				Body: gomega.HaveLen(17), // The body should have the string "Payload Too Large" (17 bytes)
+			},
+			req: &testmatchers.HttpRequest{},
+		},
+		{
+			// test 18
+			name:      "body transform for local reply no body()",
+			routeName: "route-for-body-local-reply",
+			url:       "/foobar",
+			opts: []curl.Option{
+				curl.WithBody(strings.Repeat("x", 1500)),
+			},
+			resp: &testmatchers.HttpResponse{
+				StatusCode: http.StatusRequestEntityTooLarge,
+				Headers: map[string]any{
+					"content-length": "6",
+				},
+				Body: "foobar",
+			},
+			req: &testmatchers.HttpRequest{},
+		},
 	}
 
 	// If no indices are provided, return the full original slice.
@@ -699,8 +741,11 @@ func (s *testingSuite) SetupSuite() {
 func (s *testingSuite) TestGatewayWithTransformedRoute() {
 	s.SetRustformationInController(false)
 	s.assertTestResourceStatus()
+	testutils.Cleanup(s.T(), func() {
+		s.SetRustformationInController(true)
+	})
 
-	s.TestInstallation.Assertions.AssertEnvoyAdminApi(
+	s.TestInstallation.AssertionsT(s.T()).AssertEnvoyAdminApi(
 		s.Ctx,
 		proxyObjectMeta,
 		s.dynamicModuleAssertion(false),
@@ -722,10 +767,10 @@ func (s *testingSuite) SetRustformationInController(enabled bool) {
 
 	rustFormationsEnvVar := corev1.EnvVar{
 		Name:  "KGW_USE_RUST_FORMATIONS",
-		Value: "true",
+		Value: "false",
 	}
 	controllerDeployModified := controllerDeploymentOriginal.DeepCopy()
-	if enabled {
+	if !enabled {
 		// add the environment variable RUSTFORMATIONS to the modified controller deployment
 		controllerDeployModified.Spec.Template.Spec.Containers[0].Env = append(
 			controllerDeployModified.Spec.Template.Spec.Containers[0].Env,
@@ -742,9 +787,9 @@ func (s *testingSuite) SetRustformationInController(enabled bool) {
 	err = s.TestInstallation.ClusterContext.Client.Patch(s.Ctx, controllerDeployModified, client.MergeFrom(controllerDeploymentOriginal))
 	s.Assert().NoError(err, "patching controller deployment")
 
-	if enabled {
+	if !enabled {
 		// wait for the changes to be reflected in pod
-		s.TestInstallation.Assertions.EventuallyPodContainerContainsEnvVar(
+		s.TestInstallation.AssertionsT(s.T()).EventuallyPodContainerContainsEnvVar(
 			s.Ctx,
 			s.TestInstallation.Metadata.InstallNamespace,
 			metav1.ListOptions{
@@ -755,7 +800,7 @@ func (s *testingSuite) SetRustformationInController(enabled bool) {
 		)
 	} else {
 		// make sure the env var is removed
-		s.TestInstallation.Assertions.EventuallyPodContainerDoesNotContainEnvVar(
+		s.TestInstallation.AssertionsT(s.T()).EventuallyPodContainerDoesNotContainEnvVar(
 			s.Ctx,
 			s.TestInstallation.Metadata.InstallNamespace,
 			metav1.ListOptions{
@@ -771,19 +816,15 @@ func (s *testingSuite) TestGatewayRustformationsWithTransformedRoute() {
 	s.SetRustformationInController(true)
 	s.assertTestResourceStatus()
 
-	testutils.Cleanup(s.T(), func() {
-		s.SetRustformationInController(false)
-	})
-
 	// wait for pods to be running again, since controller deployment was patched
-	s.TestInstallation.Assertions.EventuallyPodsRunning(s.Ctx, s.TestInstallation.Metadata.InstallNamespace, metav1.ListOptions{
+	s.TestInstallation.AssertionsT(s.T()).EventuallyPodsRunning(s.Ctx, s.TestInstallation.Metadata.InstallNamespace, metav1.ListOptions{
 		LabelSelector: defaults.ControllerLabelSelector,
 	})
-	s.TestInstallation.Assertions.EventuallyPodsRunning(s.Ctx, proxyObjectMeta.GetNamespace(), metav1.ListOptions{
+	s.TestInstallation.AssertionsT(s.T()).EventuallyPodsRunning(s.Ctx, proxyObjectMeta.GetNamespace(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", defaults.WellKnownAppLabel, proxyObjectMeta.GetName()),
 	})
 
-	s.TestInstallation.Assertions.AssertEnvoyAdminApi(
+	s.TestInstallation.AssertionsT(s.T()).AssertEnvoyAdminApi(
 		s.Ctx,
 		proxyObjectMeta,
 		s.dynamicModuleAssertion(true),
@@ -798,7 +839,7 @@ func (s *testingSuite) runTestCases(testCases []transformationTestCase) {
 	for _, tc := range testCases {
 		s.T().Run(tc.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
-			resp := s.TestInstallation.Assertions.AssertEventualCurlReturnResponse(
+			resp := s.TestInstallation.AssertionsT(s.T()).AssertEventualCurlReturnResponse(
 				s.Ctx,
 				defaults.CurlPodExecOpt,
 				append(tc.opts,
@@ -827,7 +868,7 @@ func (s *testingSuite) assertRouteAndTrafficPolicyStatus(routesToCheck, trafficP
 		trafficPolicyName := trafficPoliciesToCheck[i]
 
 		// get the traffic policy
-		s.TestInstallation.Assertions.Gomega.Eventually(func(g gomega.Gomega) {
+		s.TestInstallation.AssertionsT(s.T()).Gomega.Eventually(func(g gomega.Gomega) {
 			tp := &kgateway.TrafficPolicy{}
 			tpObjKey := client.ObjectKey{
 				Name:      trafficPolicyName,
@@ -911,7 +952,7 @@ func (s *testingSuite) assertTestResourceStatus() {
 
 func (s *testingSuite) dynamicModuleAssertion(shouldBeLoaded bool) func(ctx context.Context, adminClient *envoyadmincli.Client) {
 	return func(ctx context.Context, adminClient *envoyadmincli.Client) {
-		s.TestInstallation.Assertions.Gomega.Eventually(func(g gomega.Gomega) {
+		s.TestInstallation.AssertionsT(s.T()).Gomega.Eventually(func(g gomega.Gomega) {
 			listener, err := adminClient.GetSingleListenerFromDynamicListeners(ctx, "listener~8080")
 			g.Expect(err).ToNot(gomega.HaveOccurred(), "failed to get listener")
 

@@ -58,7 +58,7 @@ var (
 	svcGroup = ""
 	svcKind  = "Service"
 
-	// base setup manifests (shared between regular and agentgateway)
+	// base setup manifests
 	baseSetupManifests = []string{
 		filepath.Join(fsutils.MustGetThisDir(), "testdata/nginx.yaml"),
 		defaults.CurlPodManifest,
@@ -73,7 +73,6 @@ var (
 
 type tsuite struct {
 	*base.BaseTestingSuite
-	agentgateway bool
 }
 
 func NewTestingSuite(ctx context.Context, testInst *e2e.TestInstallation) suite.TestingSuite {
@@ -82,18 +81,6 @@ func NewTestingSuite(ctx context.Context, testInst *e2e.TestInstallation) suite.
 	}
 	return &tsuite{
 		BaseTestingSuite: base.NewBaseTestingSuite(ctx, testInst, setup, testCases, base.WithMinGwApiVersion(base.GwApiRequireBackendTLSPolicy)),
-		agentgateway:     false,
-	}
-}
-
-func NewAgentgatewayTestingSuite(ctx context.Context, testInst *e2e.TestInstallation) suite.TestingSuite {
-	setup := base.TestCase{
-		Manifests: append([]string{filepath.Join(fsutils.MustGetThisDir(), "testdata/base-agw.yaml")}, baseSetupManifests...),
-	}
-
-	return &tsuite{
-		BaseTestingSuite: base.NewBaseTestingSuite(ctx, testInst, setup, testCases, base.WithMinGwApiVersion(base.GwApiRequireBackendTLSPolicy)),
-		agentgateway:     true,
 	}
 }
 
@@ -113,7 +100,7 @@ func (s *tsuite) TestBackendTLSPolicyAndStatus() {
 		},
 	}
 	for _, tc := range tt {
-		s.TestInstallation.Assertions.AssertEventualCurlResponse(
+		s.TestInstallation.AssertionsT(s.T()).AssertEventualCurlResponse(
 			s.Ctx,
 			defaults.CurlPodExecOpt,
 			[]curl.Option{
@@ -128,12 +115,7 @@ func (s *tsuite) TestBackendTLSPolicyAndStatus() {
 		)
 	}
 
-	expectedStatus := http.StatusNotFound
-	if s.agentgateway {
-		// agentgateway does auto host rewrite
-		expectedStatus = http.StatusMovedPermanently
-	}
-	s.TestInstallation.Assertions.AssertEventualCurlResponse(
+	s.TestInstallation.AssertionsT(s.T()).AssertEventualCurlResponse(
 		s.Ctx,
 		defaults.CurlPodExecOpt,
 		[]curl.Option{
@@ -142,16 +124,11 @@ func (s *tsuite) TestBackendTLSPolicyAndStatus() {
 			curl.WithPath("/"),
 		},
 		&matchers.HttpResponse{
-			// google return 404 this when going to google.com  with host header of "foo.com"
-			StatusCode: expectedStatus,
+			// google returns 404 when going to google.com with host header of "foo.com"
+			StatusCode: http.StatusNotFound,
 		},
 	)
 
-	if s.agentgateway {
-		// Agentgateway currently doesn't support Statuses for BackendTLSPolicy
-		s.T().Log("Skipping status assertions for Agentgateway as they are not currently supported")
-		return
-	}
 	s.assertPolicyStatus(metav1.Condition{
 		Type:               string(shared.PolicyConditionAccepted),
 		Status:             metav1.ConditionTrue,
@@ -182,7 +159,7 @@ func (s *tsuite) TestBackendTLSPolicyAndStatus() {
 
 func (s *tsuite) assertPolicyStatus(inCondition metav1.Condition) {
 	currentTimeout, pollingInterval := helpers.GetTimeouts()
-	p := s.TestInstallation.Assertions
+	p := s.TestInstallation.AssertionsT(s.T())
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		tlsPol := &gwv1.BackendTLSPolicy{}
 		objKey := client.ObjectKeyFromObject(backendTlsPolicy)
@@ -228,11 +205,6 @@ const (
 
 // TestBackendTLSPolicyClearStaleStatus verifies that stale status is cleared when targetRef becomes invalid
 func (s *tsuite) TestBackendTLSPolicyClearStaleStatus() {
-	if s.agentgateway {
-		s.T().Log("Skipping status test for Agentgateway as statuses are not currently supported")
-		return
-	}
-
 	// Test applies base.yaml via setup which includes "tls-policy" targeting Services "nginx" and "nginx2"
 	// Add fake ancestor status from another controller
 	s.addAncestorStatus("tls-policy", "default", otherControllerName)
@@ -260,7 +232,7 @@ func (s *tsuite) TestBackendTLSPolicyClearStaleStatus() {
 
 func (s *tsuite) addAncestorStatus(policyName, policyNamespace, controllerName string) {
 	currentTimeout, pollingInterval := helpers.GetTimeouts()
-	s.TestInstallation.Assertions.Gomega.Eventually(func(g gomega.Gomega) {
+	s.TestInstallation.AssertionsT(s.T()).Gomega.Eventually(func(g gomega.Gomega) {
 		policy := &gwv1.BackendTLSPolicy{}
 		err := s.TestInstallation.ClusterContext.Client.Get(
 			s.Ctx,
@@ -297,7 +269,7 @@ func (s *tsuite) addAncestorStatus(policyName, policyNamespace, controllerName s
 
 func (s *tsuite) assertAncestorStatuses(ancestorName string, expectedControllers map[string]bool) {
 	currentTimeout, pollingInterval := helpers.GetTimeouts()
-	s.TestInstallation.Assertions.Gomega.Eventually(func(g gomega.Gomega) {
+	s.TestInstallation.AssertionsT(s.T()).Gomega.Eventually(func(g gomega.Gomega) {
 		policy := &gwv1.BackendTLSPolicy{}
 		err := s.TestInstallation.ClusterContext.Client.Get(
 			s.Ctx,
